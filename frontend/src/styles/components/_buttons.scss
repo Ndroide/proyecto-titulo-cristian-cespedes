@@ -1,0 +1,46 @@
+@use "../base/variables" as v;
+
+button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.2s;
+}
+
+button[type="submit"] {
+    background: v.$primary;
+    color: white;
+    &:hover {
+        background: v.$primary-dark;
+    }
+}
+
+button[type="button"] {
+    background: #6b7280;
+    color: white;
+    &:hover {
+        background: #4b5563;
+    }
+}
+
+td button {
+    margin-right: 8px;
+    margin-bottom: 4px;
+    &:first-child {
+        background: v.$warning;
+        color: white;
+        &:hover {
+            background: v.$warning-dark;
+        }
+    }
+
+    &:last-child {
+        background: v.$danger;
+        color: white;
+        &:hover {
+            background: v.$danger-dark;
+        }
+    }
+}

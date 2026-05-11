@@ -1,0 +1,95 @@
+@use "../base/variables" as v;
+
+/* Desktop table */
+
+.desktop-table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: v.$shadow;
+}
+
+thead {
+  background: v.$dark;
+  color: white;
+}
+
+th,
+td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+  font-size: 14px;
+}
+
+tbody tr:hover {
+  background: #f9fafb;
+}
+
+/* Mobile cards */
+
+.mobile-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: grid;
+    gap: 16px;
+  }
+
+  .mobile-card {
+    background: white;
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: v.$shadow;
+  }
+
+  .mobile-card-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #e5e7eb;
+
+    strong {
+      color: #374151;
+      font-size: 13px;
+    }
+
+    span {
+      color: #111827;
+      font-size: 13px;
+      text-align: right;
+      word-break: break-word;
+    }
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .mobile-card-actions {
+    margin-top: 18px;
+    display: grid;
+    gap: 10px;
+
+    button {
+      width: 100%;
+      margin: 0;
+    }
+  }
+}
