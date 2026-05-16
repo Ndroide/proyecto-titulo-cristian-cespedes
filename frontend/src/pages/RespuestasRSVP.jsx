@@ -288,20 +288,27 @@ function RespuestasRSVP() {
             <option value="pendiente">Pendiente</option>
           </select>
 
-          <input
-            type="date"
-            name="fecha_respuesta"
-            value={formulario.fecha_respuesta}
-            onChange={manejarCambio}
-          />
+          <div className="form-group">
+            <label>Fecha respuesta</label>
+            <input
+              type="date"
+              name="fecha_respuesta"
+              value={formulario.fecha_respuesta}
+              onChange={manejarCambio}
+            />
+          </div>
 
-          <input
-            type="number"
-            name="cantidad_acompanantes"
-            placeholder="Cantidad acompañantes"
-            value={formulario.cantidad_acompanantes}
-            onChange={manejarCambio}
-          />
+          <div className="form-group">
+            <label>Cantidad acompañantes</label>
+            <input
+              type="number"
+              name="cantidad_acompanantes"
+              placeholder="Cantidad acompañantes"
+              value={formulario.cantidad_acompanantes}
+              onChange={manejarCambio}
+              min="0"
+            />
+          </div>
 
           <textarea
             name="observaciones"

@@ -168,7 +168,7 @@ function Invitados() {
                 <th>Teléfono</th>
                 <th>Ciudad</th>
                 <th>Grupo</th>
-                <th>Puntaje</th>
+                {/* <th>Puntaje</th> */}
                 <th>Segmento</th>
                 <th>Acciones</th>
               </tr>
@@ -183,7 +183,7 @@ function Invitados() {
                   <td>{invitado.telefono || "Sin teléfono"}</td>
                   <td>{invitado.ciudad || "Sin ciudad"}</td>
                   <td>{invitado.nombre_grupo || "Sin grupo"}</td>
-                  <td>{invitado.puntaje_asistencia || "Sin puntaje"}</td>
+                  {/* <td>{invitado.puntaje_asistencia || "Sin puntaje"}</td> */}
                   <td>{invitado.segmento_riesgo || "Sin segmento"}</td>
                   <td>
                     <button onClick={() => manejarEditar(invitado)}>
@@ -233,10 +233,10 @@ function Invitados() {
                 <span>{invitado.nombre_grupo || "Sin grupo"}</span>
               </div>
 
-              <div className="mobile-card-row">
+              {/* <div className="mobile-card-row">
                 <strong>Puntaje</strong>
                 <span>{invitado.puntaje_asistencia || "Sin puntaje"}</span>
-              </div>
+              </div> */}
 
               <div className="mobile-card-row">
                 <strong>Segmento</strong>
@@ -311,21 +311,21 @@ function Invitados() {
             onChange={manejarCambio}
           />
 
-          <input
+          {/* <input
             type="text"
             name="rango_edad"
             placeholder="Rango de edad"
             value={formulario.rango_edad}
             onChange={manejarCambio}
-          />
+          /> */}
 
-          <input
+          {/* <input
             type="number"
             name="puntaje_asistencia"
             placeholder="Puntaje asistencia"
             value={formulario.puntaje_asistencia}
             onChange={manejarCambio}
-          />
+          /> */}
 
           <select
             name="grupo_invitado_id"

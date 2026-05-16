@@ -1,10 +1,27 @@
 import { useEffect, useState } from "react";
-import { obtenerMetricasDashboard } from "../services/dashboardService";
+import {
+  obtenerMetricasDashboard,
+  obtenerMetricasDashboardPorEvento,
+} from "../services/dashboardService";
+
+import { obtenerEventos } from "../services/eventosService";
 import {
   obtenerDashboardCliente,
   actualizarRsvpCliente,
 } from "../services/clienteService";
 import { useToast } from "../context/ToastContext";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
 
 function Dashboard() {
   const usuario = JSON.parse(localStorage.getItem("usuario"));
@@ -20,8 +37,12 @@ function DashboardAdmin() {
   const { mostrarToast } = useToast();
   const [metricas, setMetricas] = useState(null);
 
+  const [eventos, setEventos] = useState([]);
+  const [eventoSeleccionado, setEventoSeleccionado] = useState("");
+
   useEffect(() => {
-    cargarMetricas();
+    //cargarMetricas();
+    cargarDatosIniciales();
   }, []);
 
   const cargarMetricas = async () => {
@@ -34,18 +55,122 @@ function DashboardAdmin() {
     }
   };
 
+  const cargarDatosIniciales = async () => {
+    try {
+      const dataEventos = await obtenerEventos();
+      setEventos(dataEventos);
+
+      const dataMetricas = await obtenerMetricasDashboard();
+      setMetricas(dataMetricas);
+    } catch (error) {
+      console.error("Error al cargar datos del dashboard:", error);
+      mostrarToast("Ocurrió un error al cargar el dashboard", "error");
+    }
+  };
+
+  const manejarCambioEvento = async (e) => {
+    const eventoId = e.target.value;
+    setEventoSeleccionado(eventoId);
+
+    try {
+      if (eventoId === "") {
+        const data = await obtenerMetricasDashboard();
+        setMetricas(data);
+      } else {
+        const data = await obtenerMetricasDashboardPorEvento(eventoId);
+        setMetricas(data);
+      }
+    } catch (error) {
+      console.error("Error al cargar métricas del evento:", error);
+      mostrarToast("Ocurrió un error al cargar las métricas del evento", "error");
+    }
+  };
+
   if (!metricas) {
     return <p>Cargando métricas...</p>;
   }
+
+  const datosRsvp = [
+    { name: "Confirmados", value: metricas.confirmados },
+    { name: "Rechazados", value: metricas.rechazados },
+    { name: "Pendientes", value: metricas.pendientes },
+  ];
+
+  const datosRiesgo = [
+    { name: "Alto", cantidad: metricas.riesgo_alto },
+    { name: "Medio", cantidad: metricas.riesgo_medio },
+    { name: "Bajo", cantidad: metricas.riesgo_bajo },
+  ];
+
+  const coloresRsvp = ["#22c55e", "#ef4444", "#f59e0b"];
 
   return (
     <div>
       <h2>Dashboard Administrador</h2>
 
+      <section className="dashboard-section dashboard-selected-event">
+        <h3>Filtro de análisis</h3>
+
+        <label htmlFor="eventoSeleccionado">
+          Seleccionar evento
+        </label>
+
+        <select id="eventoSeleccionado" value={eventoSeleccionado} onChange={manejarCambioEvento}>
+          <option value="">Todos los eventos</option>
+
+          {eventos.map((evento) => (
+            <option key={evento.id} value={evento.id}>
+              {evento.titulo}
+            </option>
+          ))}
+        </select>
+
+        {/* {metricas.evento && (
+          <p className="event-select-name">Analizando evento: <strong>{metricas.evento}</strong></p>
+        )} */}
+      </section>
+
       <section className="dashboard-grid">
-        <div className="card">
-          <h3>Eventos registrados</h3>
-          <p>{metricas.total_eventos}</p>
+        <div className={`card ${metricas.evento ? "card-evento" : ""}`}>
+          {metricas.evento ? (
+            <>
+              <h3>Evento analizado</h3>
+              <div className="event-summary">
+                <h4>{metricas.evento}</h4>
+                <p>
+                  <strong>Fecha:</strong>{" "}
+                  {metricas.fecha_evento
+                    ? new Date(metricas.fecha_evento).toLocaleDateString("es-CL")
+                    : "No definida"}
+                </p>
+                <p>
+                  <strong>Hora:</strong>{" "}
+                  {metricas.hora_evento || "No definida"}
+                </p>
+                <p>
+                  <strong>Ubicación:</strong>{" "}
+                  {metricas.ubicacion || "No definida"}
+                </p>
+                <p>
+                  <strong>Riesgo general:</strong>
+                </p>
+
+                <div className={`risk-badge ${metricas.riesgo_general.toLowerCase()}`}>
+                  {metricas.riesgo_general}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>Resumen global</h3>
+              <div className="event-summary">
+                <p>
+                  <strong>Eventos registrados:</strong>{" "}
+                  {metricas.total_eventos}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="card">
@@ -74,17 +199,41 @@ function DashboardAdmin() {
 
         <div className="metric-row">
           <span>Confirmados</span>
-          <strong>{metricas.confirmados}</strong>
+          <strong>{metricas.confirmados} ({metricas.tasa_confirmacion}%)</strong>
         </div>
 
         <div className="metric-row">
           <span>Rechazados</span>
-          <strong>{metricas.rechazados}</strong>
+          <strong>{metricas.rechazados} ({metricas.tasa_rechazo}%)</strong>
         </div>
 
         <div className="metric-row">
           <span>Pendientes</span>
           <strong>{metricas.pendientes}</strong>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <h3>Gráfico RSVP</h3>
+
+        <div style={{ width: "100%", height: 280 }}>
+          <ResponsiveContainer>
+            <PieChart>
+              <Pie
+                data={datosRsvp}
+                dataKey="value"
+                nameKey="name"
+                outerRadius={90}
+                label
+              >
+                {datosRsvp.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={coloresRsvp[index]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
       </section>
 
@@ -104,6 +253,21 @@ function DashboardAdmin() {
         <div className="metric-row">
           <span>Riesgo bajo</span>
           <strong>{metricas.riesgo_bajo}</strong>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <h3>Gráfico de segmentación de riesgo</h3>
+
+        <div style={{ width: "100%", height: 280 }}>
+          <ResponsiveContainer>
+            <BarChart data={datosRiesgo}>
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="cantidad" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </section>
 
@@ -138,6 +302,7 @@ function DashboardCliente() {
   const { mostrarToast } = useToast();
 
   const [invitaciones, setInvitaciones] = useState(null);
+  const [invitacionActiva, setInvitacionActiva] = useState(null);
   const [invitacionSeleccionada, setInvitacionSeleccionada] = useState(null);
 
   const [formularioRsvp, setFormularioRsvp] = useState({
@@ -153,7 +318,9 @@ function DashboardCliente() {
   const cargarDashboardCliente = async () => {
     try {
       const data = await obtenerDashboardCliente();
+
       setInvitaciones(data);
+      setInvitacionActiva(data[0] || null);
     } catch (error) {
       console.error("Error al cargar dashboard cliente:", error);
       mostrarToast("Ocurrió un error al cargar tu información", "error");
@@ -182,6 +349,16 @@ function DashboardCliente() {
 
   const manejarCambioRsvp = (e) => {
     const { name, value } = e.target;
+
+    if (name === "estado_respuesta" && value === "rechazado") {
+      setFormularioRsvp({
+        ...formularioRsvp,
+        estado_respuesta: value,
+        cantidad_acompanantes: 0,
+      });
+
+      return;
+    }
 
     setFormularioRsvp({
       ...formularioRsvp,
@@ -252,23 +429,27 @@ function DashboardCliente() {
 
       <section className="dashboard-grid">
         <div className="card">
-          <h3>Eventos invitados</h3>
-          <p>{invitaciones.length}</p>
+          <h3>Evento seleccionado</h3>
+          <p>{invitacionActiva?.evento || "Sin invitación"}</p>
         </div>
 
         <div className="card">
-          <h3>Confirmados</h3>
-          <p>{confirmados}</p>
+          <h3>Estado RSVP</h3>
+          <p>{invitacionActiva?.estado_respuesta || "pendiente"}</p>
         </div>
 
         <div className="card">
-          <h3>Pendientes</h3>
-          <p>{pendientes}</p>
+          <h3>Acompañantes</h3>
+          <p>{invitacionActiva?.cantidad_acompanantes || 0}</p>
         </div>
 
         <div className="card">
-          <h3>Asistencia proyectada</h3>
-          <p>{asistenciaProyectada}</p>
+          <h3>Asistencia estimada</h3>
+          <p>
+            {invitacionActiva?.estado_respuesta === "confirmado"
+              ? 1 + Number(invitacionActiva?.cantidad_acompanantes || 0)
+              : 0}
+          </p>
         </div>
       </section>
 
@@ -278,59 +459,65 @@ function DashboardCliente() {
         {invitaciones.length === 0 ? (
           <p>No tienes invitaciones asociadas.</p>
         ) : (
-          invitaciones.map((item) => (
-            <div key={item.invitacion_id} className="client-event-card">
-              <h4>{item.evento}</h4>
+          <div className="invitaciones-lista">
+            {invitaciones.map((item) => (
+              <div
+                key={item.invitacion_id}
+                className={`invitacion-item ${
+                  invitacionActiva?.invitacion_id === item.invitacion_id
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() => setInvitacionActiva(item)}
+              >
+                <div className="invitacion-main">
+                  <h4>{item.evento}</h4>
 
-              <p>
-                <strong>Fecha:</strong>{" "}
-                {new Date(item.fecha_evento).toLocaleDateString("es-CL")}
-              </p>
+                  <div className="invitacion-meta">
+                    <span>
+                      Fecha:{" "}
+                      {new Date(item.fecha_evento).toLocaleDateString("es-CL")}
+                    </span>
 
-              <p>
-                <strong>Hora:</strong> {item.hora_evento || "Por confirmar"}
-              </p>
+                    <span>
+                      Hora: {item.hora_evento || "Por confirmar"}
+                    </span>
 
-              <p>
-                <strong>Ubicación:</strong> {item.ubicacion}
-              </p>
+                    <span>
+                      Ubicación: {item.ubicacion}
+                    </span>
+                  </div>
+                </div>
 
-              <p>
-                <strong>Estado invitación:</strong>{" "}
-                {item.estado_invitacion || "pendiente"}
-              </p>
+                <div className="invitacion-status">
+                  <span
+                    className={`estado-badge ${
+                      item.estado_respuesta || "pendiente"
+                    }`}
+                  >
+                    {item.estado_respuesta || "pendiente"}
+                  </span>
 
-              <p>
-                <strong>Respuesta RSVP:</strong>{" "}
-                {item.estado_respuesta || "pendiente"}
-              </p>
-
-              <p>
-                <strong>Acompañantes:</strong>{" "}
-                {item.cantidad_acompanantes || 0}
-              </p>
-
-              {item.observaciones && (
-                <p>
-                  <strong>Observaciones:</strong> {item.observaciones}
-                </p>
-              )}
-
-              {puedeEditarRsvp(item.fecha_evento) ? (
-                <button
-                  type="button"
-                  className="client-action-link"
-                  onClick={() => abrirModalRsvp(item)}
-                >
-                  Responder o editar RSVP
-                </button>
-              ) : (
-                <p className="client-closed-rsvp">
-                  RSVP cerrado: ya no es posible modificar esta respuesta.
-                </p>
-              )}
-            </div>
-          ))
+                  {puedeEditarRsvp(item.fecha_evento) ? (
+                    <button
+                      type="button"
+                      className="client-action-link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        abrirModalRsvp(item);
+                      }}
+                    >
+                      Responder RSVP
+                    </button>
+                  ) : (
+                    <span className="client-closed-rsvp">
+                      RSVP cerrado
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -356,7 +543,9 @@ function DashboardCliente() {
                 <option value="pendiente">Pendiente</option>
               </select>
 
-              <input
+              <div className="form-group">
+                <label>Cantidad acompañantes</label>
+                <input
                 type="number"
                 name="cantidad_acompanantes"
                 placeholder="Cantidad acompañantes"
@@ -364,6 +553,7 @@ function DashboardCliente() {
                 onChange={manejarCambioRsvp}
                 min="0"
               />
+              </div>
 
               <textarea
                 name="observaciones"

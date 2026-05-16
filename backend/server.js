@@ -67,7 +67,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-
 app.get('/api/db-health', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT DATABASE() AS base_datos, NOW() AS fecha_servidor');
@@ -1076,6 +1075,13 @@ app.post('/api/respuestas-rsvp', verificarToken, verificarAdmin, async (req, res
       observaciones
     } = req.body;
 
+    if (Number(cantidad_acompanantes) < 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La cantidad de acompañantes no puede ser negativa'
+      });
+    }
+
     if (!invitacion_id || !estado_respuesta) {
       return res.status(400).json({
         ok: false,
@@ -1122,6 +1128,13 @@ app.put('/api/respuestas-rsvp/:id', verificarToken, verificarAdmin, async (req, 
       cantidad_acompanantes,
       observaciones
     } = req.body;
+
+    if (!invitacion_id || !estado_respuesta) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Faltan campos obligatorios'
+      });
+    }
 
     const [result] = await pool.query(
       `UPDATE respuestas_rsvp
@@ -2063,17 +2076,33 @@ app.get('/api/dashboard/metricas', verificarToken, verificarAdmin, async (req, r
 
     const [respuestas] = await pool.query(`
       SELECT
-        SUM(CASE WHEN estado_respuesta = 'confirmado' THEN 1 ELSE 0 END) AS confirmados,
-        SUM(CASE WHEN estado_respuesta = 'rechazado' THEN 1 ELSE 0 END) AS rechazados,
-        SUM(CASE WHEN estado_respuesta = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
+        COUNT(inv.id) AS total_invitaciones,
+
+        SUM(CASE 
+          WHEN r.estado_respuesta = 'confirmado' THEN 1 
+          ELSE 0 
+        END) AS confirmados,
+
+        SUM(CASE 
+          WHEN r.estado_respuesta = 'rechazado' THEN 1 
+          ELSE 0 
+        END) AS rechazados,
+
+        SUM(CASE 
+          WHEN r.id IS NULL OR r.estado_respuesta = 'pendiente' THEN 1
+          ELSE 0 
+        END) AS pendientes,
+
         SUM(
           CASE 
-            WHEN estado_respuesta = 'confirmado' 
-            THEN 1 + IFNULL(cantidad_acompanantes, 0)
+            WHEN r.estado_respuesta = 'confirmado' 
+            THEN 1 + IFNULL(r.cantidad_acompanantes, 0)
             ELSE 0
           END
         ) AS asistencia_proyectada
-      FROM respuestas_rsvp
+      FROM invitaciones inv
+      LEFT JOIN respuestas_rsvp r
+        ON inv.id = r.invitacion_id
     `);
 
     const [recordatorios] = await pool.query(`
@@ -2095,13 +2124,33 @@ app.get('/api/dashboard/metricas', verificarToken, verificarAdmin, async (req, r
         ON i.segmento_riesgo_id = sr.id
     `);
 
+    const totalInvitaciones = Number(respuestas[0].total_invitaciones || 0);
+    const confirmados = Number(respuestas[0].confirmados || 0);
+    const rechazados = Number(respuestas[0].rechazados || 0);
+    const pendientes = Number(respuestas[0].pendientes || 0);
+
+    const tasaConfirmacion =
+      totalInvitaciones > 0 ? (confirmados / totalInvitaciones) * 100 : 0;
+
+    const tasaRechazo =
+      totalInvitaciones > 0 ? (rechazados / totalInvitaciones) * 100 : 0;
+
+    const tasaPendiente =
+      totalInvitaciones > 0 ? (pendientes / totalInvitaciones) * 100 : 0;
+
     const metricas = {
       total_eventos: Number(eventos[0].total_eventos || 0),
       total_invitados: Number(invitados[0].total_invitados || 0),
 
-      confirmados: Number(respuestas[0].confirmados || 0),
-      rechazados: Number(respuestas[0].rechazados || 0),
-      pendientes: Number(respuestas[0].pendientes || 0),
+      total_invitaciones: totalInvitaciones,
+      confirmados,
+      rechazados,
+      pendientes,
+
+      tasa_confirmacion: Number(tasaConfirmacion.toFixed(2)),
+      tasa_rechazo: Number(tasaRechazo.toFixed(2)),
+      tasa_pendiente: Number(tasaPendiente.toFixed(2)),
+
       asistencia_proyectada: Number(respuestas[0].asistencia_proyectada || 0),
 
       total_recordatorios: Number(recordatorios[0].total_recordatorios || 0),
@@ -2127,11 +2176,147 @@ app.get('/api/dashboard/metricas', verificarToken, verificarAdmin, async (req, r
     });
   }
 });
+// DASHBOARD MÉTRICAS POR EVENTO
+app.get('/api/dashboard/metricas/evento/:id', verificarToken, verificarAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [evento] = await pool.query(`
+      SELECT 
+        id,
+        titulo,
+        fecha_evento,
+        hora_evento,
+        ubicacion
+      FROM eventos
+      WHERE id = ?
+      LIMIT 1
+    `, [id]);
+
+    if (evento.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Evento no encontrado'
+      });
+    }
+
+    const [respuestas] = await pool.query(`
+      SELECT
+        COUNT(inv.id) AS total_invitaciones,
+
+        SUM(CASE WHEN r.estado_respuesta = 'confirmado' THEN 1 ELSE 0 END) AS confirmados,
+        SUM(CASE WHEN r.estado_respuesta = 'rechazado' THEN 1 ELSE 0 END) AS rechazados,
+
+        SUM(CASE 
+          WHEN r.id IS NULL OR r.estado_respuesta = 'pendiente' THEN 1 
+          ELSE 0 
+        END) AS pendientes,
+
+        SUM(
+          CASE 
+            WHEN r.estado_respuesta = 'confirmado'
+            THEN 1 + IFNULL(r.cantidad_acompanantes, 0)
+            ELSE 0
+          END
+        ) AS asistencia_proyectada
+      FROM invitaciones inv
+      LEFT JOIN respuestas_rsvp r
+        ON inv.id = r.invitacion_id
+      WHERE inv.evento_id = ?
+    `, [id]);
+
+    const [recordatorios] = await pool.query(`
+      SELECT
+        COUNT(rec.id) AS total_recordatorios,
+        SUM(CASE WHEN rec.estado_recordatorio = 'programado' THEN 1 ELSE 0 END) AS programados,
+        SUM(CASE WHEN rec.estado_recordatorio = 'enviado' THEN 1 ELSE 0 END) AS enviados,
+        SUM(CASE WHEN rec.estado_recordatorio = 'fallido' THEN 1 ELSE 0 END) AS fallidos
+      FROM recordatorios rec
+      INNER JOIN invitaciones inv
+        ON rec.invitacion_id = inv.id
+      WHERE inv.evento_id = ?
+    `, [id]);
+
+    const [segmentos] = await pool.query(`
+      SELECT
+        SUM(CASE WHEN sr.nombre LIKE '%alto%' THEN 1 ELSE 0 END) AS riesgo_alto,
+        SUM(CASE WHEN sr.nombre LIKE '%medio%' THEN 1 ELSE 0 END) AS riesgo_medio,
+        SUM(CASE WHEN sr.nombre LIKE '%bajo%' THEN 1 ELSE 0 END) AS riesgo_bajo
+      FROM invitaciones inv
+      INNER JOIN invitados i
+        ON inv.invitado_id = i.id
+      LEFT JOIN segmentos_riesgo sr
+        ON i.segmento_riesgo_id = sr.id
+      WHERE inv.evento_id = ?
+    `, [id]);
+
+    const totalInvitaciones = Number(respuestas[0].total_invitaciones || 0);
+    const confirmados = Number(respuestas[0].confirmados || 0);
+    const rechazados = Number(respuestas[0].rechazados || 0);
+    const pendientes = Number(respuestas[0].pendientes || 0);
+
+    const tasaConfirmacion = totalInvitaciones > 0 ? (confirmados / totalInvitaciones) * 100 : 0;
+    const tasaRechazo = totalInvitaciones > 0 ? (rechazados / totalInvitaciones) * 100 : 0;
+    const tasaPendiente = totalInvitaciones > 0 ? (pendientes / totalInvitaciones) * 100 : 0;
+
+    let riesgoGeneral = 'Bajo';
+
+    if (tasaPendiente >= 61) {
+      riesgoGeneral = 'Alto';
+    } else if (tasaPendiente >= 31) {
+      riesgoGeneral = 'Medio';
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        evento_id: Number(id),
+        evento: evento[0].titulo,
+
+        fecha_evento: evento[0].fecha_evento,
+        hora_evento: evento[0].hora_evento,
+        ubicacion: evento[0].ubicacion,
+
+        total_invitaciones: totalInvitaciones,
+        total_invitados: totalInvitaciones,
+
+        confirmados,
+        rechazados,
+        pendientes,
+
+        tasa_confirmacion: Number(tasaConfirmacion.toFixed(2)),
+        tasa_rechazo: Number(tasaRechazo.toFixed(2)),
+        tasa_pendiente: Number(tasaPendiente.toFixed(2)),
+
+        asistencia_proyectada: Number(respuestas[0].asistencia_proyectada || 0),
+
+        total_recordatorios: Number(recordatorios[0].total_recordatorios || 0),
+        recordatorios_programados: Number(recordatorios[0].programados || 0),
+        recordatorios_enviados: Number(recordatorios[0].enviados || 0),
+        recordatorios_fallidos: Number(recordatorios[0].fallidos || 0),
+
+        riesgo_alto: Number(segmentos[0].riesgo_alto || 0),
+        riesgo_medio: Number(segmentos[0].riesgo_medio || 0),
+        riesgo_bajo: Number(segmentos[0].riesgo_bajo || 0),
+
+        riesgo_general: riesgoGeneral
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      message: 'Error al obtener métricas del evento',
+      error: error.message
+    });
+  }
+});
 
 // DASHBOARD CLIENTE
 app.get('/api/cliente/dashboard', verificarToken, async (req, res) => {
   try {
-    const usuarioId = req.usuario.id;
+    //const usuarioId = req.usuario.id;
+    const correoUsuario = req.usuario.correo;
 
     const [rows] = await pool.query(`
       SELECT
@@ -2161,9 +2346,9 @@ app.get('/api/cliente/dashboard', verificarToken, async (req, res) => {
         ON inv.evento_id = e.id
       LEFT JOIN respuestas_rsvp r
         ON r.invitacion_id = inv.id
-      WHERE i.usuario_id = ?
-      ORDER BY e.fecha_evento ASC
-    `, [usuarioId]);
+      WHERE i.correo = ?
+      ORDER BY e.fecha_evento ASC, e.hora_evento ASC
+    `, [correoUsuario]);
 
     res.json({
       ok: true,
@@ -2182,7 +2367,8 @@ app.get('/api/cliente/dashboard', verificarToken, async (req, res) => {
 //
 app.put('/api/cliente/rsvp/:invitacion_id', verificarToken, async (req, res) => {
   try {
-    const usuarioId = req.usuario.id;
+    //const usuarioId = req.usuario.id;
+    const correoUsuario = req.usuario.correo;
     const { invitacion_id } = req.params;
 
     const {
@@ -2190,6 +2376,15 @@ app.put('/api/cliente/rsvp/:invitacion_id', verificarToken, async (req, res) => 
       cantidad_acompanantes,
       observaciones
     } = req.body;
+
+    const acompanantesFinales = estado_respuesta === "rechazado" ? 0 : Number(cantidad_acompanantes || 0);
+
+    if (acompanantesFinales < 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La cantidad de acompañantes no puede ser negativa'
+      });
+    }
 
     if (!estado_respuesta) {
       return res.status(400).json({
@@ -2205,10 +2400,10 @@ app.put('/api/cliente/rsvp/:invitacion_id', verificarToken, async (req, res) => 
       FROM invitados i
       INNER JOIN invitaciones inv ON inv.invitado_id = i.id
       INNER JOIN eventos e ON inv.evento_id = e.id
-      WHERE i.usuario_id = ?
+      WHERE LOWER(TRIM(i.correo)) = LOWER(TRIM(?))
       AND inv.id = ?
       LIMIT 1
-    `, [usuarioId, invitacion_id]);
+    `, [correoUsuario, invitacion_id]);
 
     if (rows.length === 0) {
       return res.status(403).json({
@@ -2248,7 +2443,7 @@ app.put('/api/cliente/rsvp/:invitacion_id', verificarToken, async (req, res) => 
         WHERE invitacion_id = ?
       `, [
         estado_respuesta,
-        cantidad_acompanantes ?? 0,
+        acompanantesFinales,
         observaciones || null,
         invitacion_id
       ]);
@@ -2260,7 +2455,7 @@ app.put('/api/cliente/rsvp/:invitacion_id', verificarToken, async (req, res) => 
       `, [
         invitacion_id,
         estado_respuesta,
-        cantidad_acompanantes ?? 0,
+        acompanantesFinales,
         observaciones || null
       ]);
     }

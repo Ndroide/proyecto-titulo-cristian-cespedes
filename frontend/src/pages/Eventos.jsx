@@ -289,6 +289,7 @@ function Eventos() {
             placeholder="Capacidad"
             value={formulario.capacidad}
             onChange={manejarCambio}
+            min="0"
           />
 
           <textarea
